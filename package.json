@@ -1,0 +1,39 @@
+{
+  "name": "smartcomply-web-sdk",
+  "version": "0.1.0",
+  "description": "SmartComply identity verification and liveness SDK",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "typecheck": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Anitajallas/smartcomply-web-sdk.git"
+  },
+  "keywords": [
+    "smartcomply",
+    "identity",
+    "verification",
+    "liveness",
+    "onboarding",
+    "sdk"
+  ],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Anitajallas/smartcomply-web-sdk/issues"
+  },
+  "homepage": "https://github.com/Anitajallas/smartcomply-web-sdk#readme",
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "^0.10.32"
+  }
+}
