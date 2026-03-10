@@ -1,0 +1,255 @@
+---
+title: "Flutter SDK"
+description: "Integrate SmartComply identity verification and liveness detection into your Flutter app."
+---
+
+## Installation
+
+<Info>
+  You will receive a **personal access token** from SmartComply to access the private SDK repository. Keep this token secure and do not commit it to source control.
+</Info>
+
+Add the SDK to your app's `pubspec.yaml`, replacing `YOUR_TOKEN` with the token provided to you:
+
+```yaml
+dependencies:
+  smartcomply_sdk:
+    git:
+      url: https://YOUR_TOKEN@github.com/Anitajallas/smartcomply-web-sdk.git
+      path: flutter
+```
+
+Then run:
+
+```bash
+flutter pub get
+```
+
+<Note>
+  Store the token in an environment variable or a secrets manager (e.g. GitHub Secrets, `.env` file excluded from git) rather than hard-coding it in `pubspec.yaml`.
+</Note>
+
+---
+
+## How It Works
+
+The SDK handles three stages of verification. Face detection runs **entirely on-device** — no video is streamed live to the server, only the final recorded clip is uploaded at the end.
+
+```
+Your Flutter App
+     │
+     ├─ 1. createSession()      ──► POST /v1/session/create       ──► Session token
+     │
+     ├─ 2. onboarding.verify()  ──► POST /v1/onboarding/verify    ──► ID confirmed
+     │
+     └─ 3. liveness.startCheck()
+               │
+               ├─ GET challenge  ──► POST /v1/liveness/start       ──► Actions list
+               │
+               ├─ Camera opens, ML Kit detects face actions (on-device, no network)
+               │
+               └─ Upload video   ──► POST /v1/liveness/verify      ──► Result
+```
+
+## Platform Setup
+
+<Tabs>
+  <Tab title="Android">
+    In `android/app/src/main/AndroidManifest.xml`, add the following permissions inside `<manifest>`:
+
+    ```xml
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    ```
+
+    In `android/app/build.gradle` (or `build.gradle.kts`), set the minimum SDK version:
+
+    ```groovy
+    android {
+        defaultConfig {
+            minSdk 21
+        }
+    }
+    ```
+  </Tab>
+  <Tab title="iOS">
+    In `ios/Runner/Info.plist`, add:
+
+    ```xml
+    <key>NSCameraUsageDescription</key>
+    <string>Camera access is required for identity verification.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Microphone access is required for liveness recording.</string>
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Initialisation
+
+Import the SDK and create a client instance once — typically in your app's startup logic:
+
+```dart
+import 'package:smartcomply_sdk/smartcomply_sdk.dart';
+
+final sdk = SmartComply(
+  SDKConfig(
+    apiKey: 'pk_live_YOUR_API_KEY',
+    environment: Environment.production, // or Environment.sandbox for testing
+  ),
+);
+```
+
+---
+
+## Step 1 — Create a Session
+
+Every verification flow starts with a session. Call this before any other SDK method:
+
+```dart
+final session = await sdk.createSession();
+print(session.token); // sess_xxxxxxxxxxxx
+```
+
+---
+
+## Step 2 — Verify Identity
+
+Verify the user's identity against a government-issued ID:
+
+```dart
+final result = await sdk.onboarding.verify(
+  onboardingType: OnboardingType.bvn, // bvn | nin | driversLicense | votersCard | passport
+  idNumber: '22012345678',
+  nameToConfirm: 'John Doe',
+);
+
+if (result.isVerified) {
+  print('Verified! Confidence: ${result.match.confidence}');
+} else {
+  print('Verification failed');
+}
+```
+
+<Note>
+  Call `createSession()` before `verify()`. If you use `startOnboarding()` (see below), the session is created automatically.
+</Note>
+
+---
+
+## Step 3 — Liveness Check
+
+Launch the built-in camera screen. The SDK will guide the user through face actions, record video, and submit it to the backend — all in one call:
+
+```dart
+final liveness = await sdk.liveness.startCheck(
+  context,
+  actions: ['smile', 'blink'], // optional — server picks actions if omitted
+);
+
+if (liveness.isVerified) {
+  print('Liveness passed! Score: ${liveness.verificationScore}');
+} else {
+  print('Failed: ${liveness.reason}');
+  if (liveness.canRetry == true) {
+    // prompt user to try again
+  }
+}
+```
+
+---
+
+## Convenience Method
+
+`startOnboarding()` combines session creation and identity verification in one call:
+
+```dart
+final result = await sdk.startOnboarding(
+  onboardingType: OnboardingType.nin,
+  idNumber: '12345678901',
+  nameToConfirm: 'Jane Doe',
+);
+```
+
+---
+
+## Supported ID Types
+
+| Enum value | ID type |
+|---|---|
+| `OnboardingType.bvn` | Bank Verification Number |
+| `OnboardingType.nin` | National Identification Number |
+| `OnboardingType.driversLicense` | Driver's License |
+| `OnboardingType.votersCard` | Voter's Card |
+| `OnboardingType.passport` | International Passport |
+
+---
+
+## Supported Liveness Actions
+
+These are the actions the SDK can detect during a liveness challenge:
+
+| Action key | Prompt shown to user |
+|---|---|
+| `smile` | Smile naturally |
+| `blink` | Blink your eyes |
+| `close_eyes` | Close both eyes |
+| `turn_left` | Turn your head left |
+| `turn_right` | Turn your head right |
+| `nod` | Nod your head |
+| `look_up` | Look upward |
+| `look_down` | Look downward |
+
+---
+
+## Error Handling
+
+All SDK methods throw `SDKError` on failure. Wrap calls in a try/catch:
+
+```dart
+try {
+  final session = await sdk.createSession();
+} on SDKError catch (e) {
+  print('Error ${e.statusCode}: ${e.message}');
+}
+```
+
+---
+
+## Full Example
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:smartcomply_sdk/smartcomply_sdk.dart';
+
+final sdk = SmartComply(
+  SDKConfig(apiKey: 'pk_live_YOUR_API_KEY'),
+);
+
+Future<void> runVerification(BuildContext context) async {
+  try {
+    // 1. Session
+    await sdk.createSession();
+
+    // 2. Identity
+    final identity = await sdk.onboarding.verify(
+      onboardingType: OnboardingType.bvn,
+      idNumber: '22012345678',
+      nameToConfirm: 'John Doe',
+    );
+
+    if (!identity.isVerified) return;
+
+    // 3. Liveness
+    final liveness = await sdk.liveness.startCheck(context);
+
+    if (liveness.isVerified) {
+      // Proceed — user is fully verified
+    }
+  } on SDKError catch (e) {
+    debugPrint('SmartComply error: $e');
+  }
+}
+```

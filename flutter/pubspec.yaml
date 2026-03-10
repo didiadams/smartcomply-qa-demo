@@ -1,0 +1,25 @@
+name: smartcomply_sdk
+description: SmartComply identity verification and liveness SDK for Flutter.
+version: 0.1.0
+homepage: https://github.com/Anitajallas/smartcomply-web-sdk
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.10.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.0
+  camera: ^0.11.0
+  google_mlkit_face_detection: ^0.11.0
+  path_provider: ^2.1.0
+  permission_handler: ^11.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  # No assets for now
