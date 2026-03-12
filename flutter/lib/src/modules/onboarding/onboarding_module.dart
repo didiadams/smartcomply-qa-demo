@@ -2,7 +2,9 @@ import '../../client/http_client.dart';
 import '../../types/onboarding.dart';
 
 /// Handles identity verification (onboarding) API calls.
-/// Mirrors the TypeScript `OnboardingModule` class.
+/// Endpoint: POST /v1/onboarding/verify
+///
+/// Auth: Authorization: Bearer <session_token>
 class OnboardingModule {
   final HttpClient _http;
   String? _sessionId;
@@ -20,43 +22,29 @@ class OnboardingModule {
     return _sessionId!;
   }
 
-  /// Verifies the user's identity against the given ID.
+  /// Verifies the user's identity.
+  ///
+  /// For [OnboardingType.bvn], pass the BVN as [idNumber] — sent as `"bvn"` field.
+  /// For [OnboardingType.nin], pass the NIN as [idNumber] — sent as `"id_number"` field.
   Future<VerifyIdentityResponse> verify({
     required OnboardingType onboardingType,
     required String idNumber,
-    required String nameToConfirm,
-  }) {
+  }) async {
     final sessionId = _requireSession();
+
+    // The real backend uses different field names per type:
+    // BVN → {"bvn": "<number>"}   NIN → {"id_number": "<number>"}
+    final idField = onboardingType == OnboardingType.bvn ? 'bvn' : 'id_number';
+
     return _http.request<VerifyIdentityResponse>(
       'POST',
       '/v1/onboarding/verify',
       body: {
         'session_id': sessionId,
         'onboarding_type': onboardingType.toJson(),
-        'id_number': idNumber,
-        'name_to_confirm': nameToConfirm,
+        idField: idNumber,
       },
       fromJson: VerifyIdentityResponse.fromJson,
-    );
-  }
-
-  /// Retrieves the current onboarding session status.
-  Future<OnboardingSession> status() {
-    final sessionId = _requireSession();
-    return _http.request<OnboardingSession>(
-      'GET',
-      '/v1/onboarding/status/$sessionId',
-      fromJson: OnboardingSession.fromJson,
-    );
-  }
-
-  /// Retrieves the final onboarding result.
-  Future<OnboardingResult> result() {
-    final sessionId = _requireSession();
-    return _http.request<OnboardingResult>(
-      'GET',
-      '/v1/onboarding/result/$sessionId',
-      fromJson: OnboardingResult.fromJson,
     );
   }
 }

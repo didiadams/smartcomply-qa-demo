@@ -1,68 +1,119 @@
-/// Response from `POST /v1/liveness/start`.
-class LivenessChallengeResponse {
-  final String challengeId;
-  final List<String> actions;
-  final String instruction;
-  final int timeLimitSeconds;
-  final String expiresAt;
+/// Valid challenge actions accepted by the backend.
+/// Must be sent UPPERCASE to the API.
+enum ChallengeAction {
+  blink,
+  turnLeft,
+  turnRight,
+  turnHead,
+  openMouth;
 
-  const LivenessChallengeResponse({
-    required this.challengeId,
-    required this.actions,
-    required this.instruction,
-    required this.timeLimitSeconds,
-    required this.expiresAt,
-  });
+  /// Serialises to the UPPERCASE string the API expects.
+  String toJson() {
+    switch (this) {
+      case ChallengeAction.blink:      return 'BLINK';
+      case ChallengeAction.turnLeft:   return 'TURN_LEFT';
+      case ChallengeAction.turnRight:  return 'TURN_RIGHT';
+      case ChallengeAction.turnHead:   return 'TURN_HEAD';
+      case ChallengeAction.openMouth:  return 'OPEN_MOUTH';
+    }
+  }
 
-  factory LivenessChallengeResponse.fromJson(Map<String, dynamic> json) =>
-      LivenessChallengeResponse(
-        challengeId: json['challenge_id'] as String,
-        actions: List<String>.from(json['actions'] as List),
-        instruction: json['instruction'] as String,
-        timeLimitSeconds: json['time_limit_seconds'] as int,
-        expiresAt: json['expires_at'] as String,
-      );
+  static ChallengeAction fromString(String s) {
+    switch (s.toUpperCase()) {
+      case 'BLINK':      return ChallengeAction.blink;
+      case 'TURN_LEFT':  return ChallengeAction.turnLeft;
+      case 'TURN_RIGHT': return ChallengeAction.turnRight;
+      case 'TURN_HEAD':  return ChallengeAction.turnHead;
+      case 'OPEN_MOUTH': return ChallengeAction.openMouth;
+      default: return ChallengeAction.blink;
+    }
+  }
 }
 
-/// Response from `POST /v1/liveness/verify`.
-class LivenessVerifyResponse {
-  final String status; // "verified" | "failed"
-  final double? verificationScore;
-  final List<String>? detectedActions;
-  final bool? actionsMatched;
-  final String? verifiedAt;
-  final String? reason;
-  final List<String>? expectedActions;
-  final bool? canRetry;
+/// Response from `POST /v1/liveness/create`.
+class LivenessCreateResponse {
+  final int id;           // LivenessEntry PK — needed for submit
+  final String status;    // "pending"
+  final String? clientId;
 
-  const LivenessVerifyResponse({
+  const LivenessCreateResponse({
+    required this.id,
     required this.status,
-    this.verificationScore,
-    this.detectedActions,
-    this.actionsMatched,
-    this.verifiedAt,
-    this.reason,
-    this.expectedActions,
-    this.canRetry,
+    this.clientId,
   });
 
-  bool get isVerified => status == 'verified';
+  factory LivenessCreateResponse.fromJson(Map<String, dynamic> json) {
+    final data = json['data'] as Map<String, dynamic>? ?? json;
+    return LivenessCreateResponse(
+      id: data['id'] as int,
+      status: data['status'] as String? ?? 'pending',
+      clientId: data['client_id'] as String?,
+    );
+  }
+}
 
-  factory LivenessVerifyResponse.fromJson(Map<String, dynamic> json) =>
-      LivenessVerifyResponse(
-        status: json['status'] as String,
-        verificationScore: json['verification_score'] != null
-            ? (json['verification_score'] as num).toDouble()
-            : null,
-        detectedActions: json['detected_actions'] != null
-            ? List<String>.from(json['detected_actions'] as List)
-            : null,
-        actionsMatched: json['actions_matched'] as bool?,
-        verifiedAt: json['verified_at'] as String?,
-        reason: json['reason'] as String?,
-        expectedActions: json['expected_actions'] != null
-            ? List<String>.from(json['expected_actions'] as List)
-            : null,
-        canRetry: json['can_retry'] as bool?,
-      );
+/// Response from `POST /v1/liveness/submit`.
+class LivenessSubmitResponse {
+  final String status;         // "success"
+  final String message;
+  final String? livenessStatus; // "pending" | "passed" | "failed" | "processing"
+  final String? verifiedAt;
+  final String? failureReason;
+  final List<String>? challengeActions;
+  final String? videoUrl;
+
+  const LivenessSubmitResponse({
+    required this.status,
+    required this.message,
+    this.livenessStatus,
+    this.verifiedAt,
+    this.failureReason,
+    this.challengeActions,
+    this.videoUrl,
+  });
+
+  bool get isSuccess => status == 'success';
+
+  factory LivenessSubmitResponse.fromJson(Map<String, dynamic> json) {
+    final data = json['data'] as Map<String, dynamic>? ?? {};
+    return LivenessSubmitResponse(
+      status: json['status'] as String? ?? 'failed',
+      message: json['message'] as String? ?? '',
+      livenessStatus: data['status'] as String?,
+      verifiedAt: data['verified_at'] as String?,
+      failureReason: data['failure_reason'] as String?,
+      challengeActions: data['challenge_actions'] != null
+          ? List<String>.from(data['challenge_actions'] as List)
+          : null,
+      videoUrl: data['video_url'] as String?,
+    );
+  }
+}
+
+/// SDK config returned from `GET /v1/sdk/initialize`.
+class SDKInitializeResponse {
+  final String brandName;
+  final String description;
+  final String theme;
+  final String? redirectUrl;
+  final Map<String, dynamic>? channels;
+
+  const SDKInitializeResponse({
+    required this.brandName,
+    required this.description,
+    required this.theme,
+    this.redirectUrl,
+    this.channels,
+  });
+
+  factory SDKInitializeResponse.fromJson(Map<String, dynamic> json) {
+    final data = json['data'] as Map<String, dynamic>? ?? json;
+    return SDKInitializeResponse(
+      brandName: data['brand_name'] as String? ?? '',
+      description: data['description'] as String? ?? '',
+      theme: data['theme'] as String? ?? 'default',
+      redirectUrl: data['redirect_url'] as String?,
+      channels: data['channels'] as Map<String, dynamic>?,
+    );
+  }
 }

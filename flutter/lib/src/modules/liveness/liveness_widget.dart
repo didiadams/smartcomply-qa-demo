@@ -10,30 +10,32 @@ import '../../camera/action_detector.dart';
 import '../../types/liveness.dart';
 
 /// Callback invoked when the liveness capture finishes.
+/// [autoshotFile]: a still JPEG frame captured at the start.
+/// [videoFile]: the recorded session video.
 typedef LivenessCompleteCallback = void Function(
+  File autoshotFile,
   File videoFile,
-  String challengeId,
 );
 
 /// Full-screen Flutter widget that:
 /// 1. Opens the front camera
-/// 2. Streams frames through ML Kit face detection
-/// 3. Guides the user through sequential actions
-/// 4. Records the session video
-/// 5. Calls [onComplete] with the recorded [File] and [challengeId]
-///
-/// This is the Flutter equivalent of `LivenessUI.ts` + the camera loop in
-/// `LivenessModule.startCheck()`.
+/// 2. Captures an autoshot (still frame) — required by /v1/liveness/create
+/// 3. Streams frames through ML Kit face detection
+/// 4. Guides the user through sequential [challengeActions] (BLINK, TURN_LEFT, etc.)
+/// 5. Records the session video — required by /v1/liveness/submit
+/// 6. Calls [onComplete] with both files
 class LivenessCheckWidget extends StatefulWidget {
-  final LivenessChallengeResponse challenge;
+  final List<ChallengeAction> challengeActions;
   final LivenessCompleteCallback onComplete;
   final VoidCallback? onTimeout;
+  final int timeLimitSeconds;
 
   const LivenessCheckWidget({
     super.key,
-    required this.challenge,
+    required this.challengeActions,
     required this.onComplete,
     this.onTimeout,
+    this.timeLimitSeconds = 45,
   });
 
   @override
@@ -41,43 +43,39 @@ class LivenessCheckWidget extends StatefulWidget {
 }
 
 class _LivenessCheckWidgetState extends State<LivenessCheckWidget> {
-  // Camera
   CameraController? _cameraController;
   bool _cameraReady = false;
 
-  // ML Kit face detection
   final FaceDetector _faceDetector = FaceDetector(
     options: FaceDetectorOptions(
-      enableClassification: true, // smilingProbability, eyeOpenProbability
+      enableClassification: true,
       enableTracking: false,
       performanceMode: FaceDetectorMode.fast,
     ),
   );
   bool _isDetecting = false;
 
-  // Actions
   late ActionDetector _actionDetector;
   List<ActionState> _actionStates = [];
-  String _instruction = '';
+  String _instruction = 'Position your face in the oval';
 
-  // Timer
   late int _remaining;
   Timer? _countdownTimer;
 
-  // State flags
   bool _completed = false;
-  bool _timedOut = false;
+  bool _autoshotCaptured = false;
+  File? _autoshotFile;
+
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _actionDetector = ActionDetector(widget.challenge.actions);
-    _actionStates = widget.challenge.actions
+    _actionDetector = ActionDetector(widget.challengeActions);
+    _actionStates = widget.challengeActions
         .map((a) => ActionState(action: a))
         .toList();
-    _instruction = widget.challenge.instruction;
-    _remaining = widget.challenge.timeLimitSeconds;
+    _remaining = widget.timeLimitSeconds;
     _initCamera();
   }
 
@@ -102,7 +100,7 @@ class _LivenessCheckWidgetState extends State<LivenessCheckWidget> {
       if (!mounted) return;
       setState(() => _cameraReady = true);
       _startCountdown();
-      _startVideoRecording();
+      await _cameraController!.startVideoRecording();
       _cameraController!.startImageStream(_onFrame);
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
@@ -115,44 +113,38 @@ class _LivenessCheckWidgetState extends State<LivenessCheckWidget> {
       setState(() => _remaining--);
       if (_remaining <= 0 && !_completed) {
         _countdownTimer?.cancel();
-        _handleTimeout();
+        _finishCapture();
       }
     });
   }
 
-  Future<void> _startVideoRecording() async {
-    try {
-      await _cameraController?.startVideoRecording();
-    } catch (_) {
-      // Video recording is best-effort
-    }
-  }
-
   Future<void> _onFrame(CameraImage image) async {
-    if (_isDetecting || _completed || _timedOut) return;
+    if (_isDetecting || _completed) return;
     _isDetecting = true;
 
     try {
+      // Capture autoshot from first valid frame
+      if (!_autoshotCaptured) {
+        await _captureAutoshot();
+      }
+
       final inputImage = _cameraImageToInputImage(image);
       if (inputImage == null) return;
 
       final faces = await _faceDetector.processImage(inputImage);
       final face = faces.isNotEmpty ? faces.first : null;
-
       final states = _actionDetector.check(face);
 
       if (!mounted) return;
-
       setState(() {
         _actionStates = states;
         final current = _actionDetector.getCurrentAction();
-
         if (face == null) {
           _instruction = 'Position your face in the oval';
         } else if (current != null) {
           _instruction = _describeAction(current);
         } else {
-          _instruction = 'All actions completed!';
+          _instruction = 'All done!';
         }
       });
 
@@ -165,18 +157,28 @@ class _LivenessCheckWidgetState extends State<LivenessCheckWidget> {
     }
   }
 
+  Future<void> _captureAutoshot() async {
+    _autoshotCaptured = true; // set first to avoid re-entry
+    try {
+      final xfile = await _cameraController?.takePicture();
+      if (xfile != null) _autoshotFile = File(xfile.path);
+    } catch (_) {
+      // If takePicture fails during stream, create a placeholder
+      final tmp = await getTemporaryDirectory();
+      _autoshotFile = File('${tmp.path}/autoshot_placeholder.jpg')
+        ..createSync();
+    }
+  }
+
   InputImage? _cameraImageToInputImage(CameraImage image) {
     final camera = _cameraController?.description;
     if (camera == null) return null;
-
     final rotation = InputImageRotationValue.fromRawValue(
           camera.sensorOrientation,
         ) ??
         InputImageRotation.rotation0deg;
-
     final format = InputImageFormatValue.fromRawValue(image.format.raw);
     if (format == null) return null;
-
     final plane = image.planes.first;
     return InputImage.fromBytes(
       bytes: plane.bytes,
@@ -189,35 +191,34 @@ class _LivenessCheckWidgetState extends State<LivenessCheckWidget> {
     );
   }
 
-  Future<void> _handleTimeout() async {
-    if (_timedOut) return;
-    _timedOut = true;
-    await _finishCapture();
-    widget.onTimeout?.call();
-  }
-
   Future<void> _finishCapture() async {
     _countdownTimer?.cancel();
     await _cameraController?.stopImageStream();
 
+    File videoFile;
     try {
       final xfile = await _cameraController?.stopVideoRecording();
-      if (xfile != null) {
-        final videoFile = File(xfile.path);
-        widget.onComplete(videoFile, widget.challenge.challengeId);
-      } else {
-        // Fallback: create empty temp file so the caller can still call verify
-        final tmp = await getTemporaryDirectory();
-        final fallback = File('${tmp.path}/liveness_fallback.mp4');
-        await fallback.create();
-        widget.onComplete(fallback, widget.challenge.challengeId);
-      }
+      videoFile = xfile != null
+          ? File(xfile.path)
+          : await _fallbackFile('video.mp4');
     } catch (_) {
-      final tmp = await getTemporaryDirectory();
-      final fallback = File('${tmp.path}/liveness_fallback.mp4');
-      await fallback.create();
-      widget.onComplete(fallback, widget.challenge.challengeId);
+      videoFile = await _fallbackFile('video.mp4');
     }
+
+    final autoshotFile = _autoshotFile ?? await _fallbackFile('autoshot.jpg');
+
+    if (widget.timeLimitSeconds > 0 && _remaining <= 0) {
+      widget.onTimeout?.call();
+    }
+
+    widget.onComplete(autoshotFile, videoFile);
+  }
+
+  Future<File> _fallbackFile(String name) async {
+    final tmp = await getTemporaryDirectory();
+    final f = File('${tmp.path}/$name');
+    await f.create();
+    return f;
   }
 
   @override
@@ -228,12 +229,22 @@ class _LivenessCheckWidgetState extends State<LivenessCheckWidget> {
     super.dispose();
   }
 
-  // ── UI ──────────────────────────────────────────────────────────────────
+  // ── UI ────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     if (_error != null) {
-      return _buildError(_error!);
+      return Scaffold(
+        backgroundColor: const Color(0xFF0A0A0A),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text('Camera error: $_error',
+                style: const TextStyle(color: Colors.white70),
+                textAlign: TextAlign.center),
+          ),
+        ),
+      );
     }
 
     return Scaffold(
@@ -241,43 +252,23 @@ class _LivenessCheckWidgetState extends State<LivenessCheckWidget> {
       body: SafeArea(
         child: Stack(
           children: [
-            // Camera preview
             if (_cameraReady && _cameraController != null)
               Positioned.fill(
                 child: Transform(
                   alignment: Alignment.center,
-                  transform: Matrix4.identity()..scale(-1.0, 1.0), // mirror
+                  transform: Matrix4.identity()..scale(-1.0, 1.0),
                   child: CameraPreview(_cameraController!),
                 ),
               ),
-
-            // Face oval guide
             Positioned.fill(child: _buildOvalGuide()),
-
-            // Top instruction bar
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: _buildTopBar(),
-            ),
-
-            // Bottom action panel
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: _buildBottomPanel(),
-            ),
-
-            // Loading overlay
+            Positioned(top: 0, left: 0, right: 0, child: _buildTopBar()),
+            Positioned(bottom: 0, left: 0, right: 0, child: _buildBottomPanel()),
             if (!_cameraReady)
               Positioned.fill(
                 child: Container(
                   color: const Color(0xFF0A0A0A),
                   child: const Center(
-                    child: CircularProgressIndicator(color: Colors.white),
-                  ),
+                      child: CircularProgressIndicator(color: Colors.white)),
                 ),
               ),
           ],
@@ -287,13 +278,10 @@ class _LivenessCheckWidgetState extends State<LivenessCheckWidget> {
   }
 
   Widget _buildOvalGuide() {
-    return CustomPaint(
-      painter: _OvalGuidePainter(
-        activeConfidence: _actionStates
-            .where((s) => s.active && !s.detected)
-            .fold(0.0, (_, s) => s.confidence),
-      ),
-    );
+    final conf = _actionStates
+        .where((s) => s.active && !s.detected)
+        .fold(0.0, (_, s) => s.confidence);
+    return CustomPaint(painter: _OvalGuidePainter(activeConfidence: conf));
   }
 
   Widget _buildTopBar() {
@@ -310,11 +298,7 @@ class _LivenessCheckWidgetState extends State<LivenessCheckWidget> {
         _instruction,
         textAlign: TextAlign.center,
         style: const TextStyle(
-          color: Colors.white,
-          fontSize: 15,
-          fontWeight: FontWeight.w600,
-          height: 1.4,
-        ),
+            color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -323,12 +307,10 @@ class _LivenessCheckWidgetState extends State<LivenessCheckWidget> {
     final total = _actionStates.length;
     final done = _actionStates.where((s) => s.detected).length;
     final progress = total > 0 ? done / total : 0.0;
-
     final min = _remaining ~/ 60;
     final sec = _remaining % 60;
-    final timerText = min > 0
-        ? '$min:${sec.toString().padLeft(2, '0')}'
-        : '${_remaining}s';
+    final timerText =
+        min > 0 ? '$min:${sec.toString().padLeft(2, '0')}' : '${_remaining}s';
 
     return Container(
       decoration: const BoxDecoration(
@@ -344,7 +326,6 @@ class _LivenessCheckWidgetState extends State<LivenessCheckWidget> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Progress bar
           ClipRRect(
             borderRadius: BorderRadius.circular(2),
             child: LinearProgressIndicator(
@@ -355,13 +336,8 @@ class _LivenessCheckWidgetState extends State<LivenessCheckWidget> {
             ),
           ),
           const SizedBox(height: 14),
-
-          // Steps
           ..._actionStates.map(_buildStep),
-
           const SizedBox(height: 12),
-
-          // Timer
           Text(
             '$timerText remaining',
             textAlign: TextAlign.center,
@@ -376,14 +352,14 @@ class _LivenessCheckWidgetState extends State<LivenessCheckWidget> {
   }
 
   Widget _buildStep(ActionState state) {
+    final idx = _actionStates.indexOf(state);
     Color bg = Colors.white.withOpacity(0.06);
     Color borderColor = Colors.white24;
     Color numBg = Colors.white.withOpacity(0.12);
     double opacity = 0.4;
-    Widget numChild = Text(
-      '${_actionStates.indexOf(state) + 1}',
-      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
-    );
+    Widget numChild = Text('${idx + 1}',
+        style: const TextStyle(
+            color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700));
 
     if (state.detected) {
       bg = const Color(0xFF22C55E).withOpacity(0.15);
@@ -403,134 +379,88 @@ class _LivenessCheckWidgetState extends State<LivenessCheckWidget> {
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(10),
-        ),
+        decoration:
+            BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
         child: Row(
           children: [
             Container(
               width: 28,
               height: 28,
               decoration: BoxDecoration(
-                color: numBg,
-                shape: BoxShape.circle,
-                border: Border.all(color: borderColor, width: 2),
-              ),
+                  color: numBg,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: borderColor, width: 2)),
               child: Center(child: numChild),
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                _describeAction(state.action),
-                style: const TextStyle(color: Colors.white, fontSize: 13),
-              ),
+              child: Text(_describeAction(state.action),
+                  style: const TextStyle(color: Colors.white, fontSize: 13)),
             ),
-            Text(
-              _actionIcon(state.action),
-              style: const TextStyle(fontSize: 18),
-            ),
+            Text(_actionIcon(state.action),
+                style: const TextStyle(fontSize: 18)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildError(String msg) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            'Camera error: $msg',
-            style: const TextStyle(color: Colors.white70),
-            textAlign: TextAlign.center,
-          ),
-        ),
-      ),
-    );
+  String _describeAction(ChallengeAction a) {
+    switch (a) {
+      case ChallengeAction.blink:     return 'Blink your eyes';
+      case ChallengeAction.turnLeft:  return 'Turn your head left';
+      case ChallengeAction.turnRight: return 'Turn your head right';
+      case ChallengeAction.turnHead:  return 'Turn your head';
+      case ChallengeAction.openMouth: return 'Open your mouth wide';
+    }
   }
 
-  String _describeAction(String action) {
-    const labels = {
-      'smile': 'Smile naturally',
-      'blink': 'Blink your eyes',
-      'turn_left': 'Turn your head left',
-      'turn_right': 'Turn your head right',
-      'nod': 'Nod your head',
-      'open_mouth': 'Open your mouth wide',
-      'raise_eyebrows': 'Raise your eyebrows',
-      'close_eyes': 'Close both eyes',
-      'look_up': 'Look upward',
-      'look_down': 'Look downward',
-      'puff_cheeks': 'Puff your cheeks',
-      'pucker_lips': 'Pucker your lips',
-    };
-    return labels[action] ?? action.replaceAll('_', ' ');
-  }
-
-  String _actionIcon(String action) {
-    const icons = {
-      'smile': '😄',
-      'blink': '😉',
-      'turn_left': '⬅',
-      'turn_right': '➡',
-      'nod': '🙂',
-      'open_mouth': '😮',
-      'raise_eyebrows': '😲',
-      'close_eyes': '😌',
-      'look_up': '👀',
-      'look_down': '👇',
-      'puff_cheeks': '😤',
-      'pucker_lips': '😗',
-    };
-    return icons[action] ?? '';
+  String _actionIcon(ChallengeAction a) {
+    switch (a) {
+      case ChallengeAction.blink:     return '😉';
+      case ChallengeAction.turnLeft:  return '⬅';
+      case ChallengeAction.turnRight: return '➡';
+      case ChallengeAction.turnHead:  return '↔';
+      case ChallengeAction.openMouth: return '😮';
+    }
   }
 }
 
-// ── Oval guide painter ──────────────────────────────────────────────────────
-
 class _OvalGuidePainter extends CustomPainter {
   final double activeConfidence;
-
   const _OvalGuidePainter({this.activeConfidence = 0});
 
   @override
   void paint(Canvas canvas, Size size) {
-    final cx = size.width / 2;
-    final cy = size.height * 0.38;
-    final rx = size.width * 0.38;
-    final ry = size.height * 0.32;
     final rect = Rect.fromCenter(
-      center: Offset(cx, cy),
-      width: rx * 2,
-      height: ry * 2,
+      center: Offset(size.width / 2, size.height * 0.38),
+      width: size.width * 0.76,
+      height: size.height * 0.64,
     );
+    canvas.drawOval(
+        rect,
+        Paint()
+          ..color = Colors.white.withOpacity(0.25)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.5);
 
-    // Background guide ring (dashed)
-    final guidePaint = Paint()
-      ..color = Colors.white.withOpacity(0.25)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5;
-    canvas.drawOval(rect, guidePaint);
-
-    // Confidence ring
     if (activeConfidence > 0) {
-      final confPaint = Paint()
-        ..color = activeConfidence > 0.6
-            ? const Color(0xFF22C55E)
-            : const Color(0xFF3B82F6)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3.5
-        ..strokeCap = StrokeCap.round;
-
-      final sweep = 2 * 3.14159 * activeConfidence;
-      canvas.drawArc(rect, -3.14159 / 2, sweep, false, confPaint);
+      canvas.drawArc(
+          rect,
+          -3.14159 / 2,
+          2 * 3.14159 * activeConfidence,
+          false,
+          Paint()
+            ..color = activeConfidence > 0.6
+                ? const Color(0xFF22C55E)
+                : const Color(0xFF3B82F6)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 3.5
+            ..strokeCap = StrokeCap.round);
     }
   }
 
   @override
-  bool shouldRepaint(_OvalGuidePainter old) =>
-      old.activeConfidence != activeConfidence;
+  bool shouldRepaint(_OvalGuidePainter o) =>
+      o.activeConfidence != activeConfidence;
 }

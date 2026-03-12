@@ -2,13 +2,15 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 import '../../client/http_client.dart';
 import '../../types/liveness.dart';
 import 'liveness_widget.dart';
 
-/// Handles liveness-check API calls and launching the camera widget.
-/// Mirrors the TypeScript `LivenessModule` class.
+/// Handles liveness API calls — two-step flow:
+/// 1. `POST /v1/liveness/create` — registers the liveness entry, uploads autoshot
+/// 2. `POST /v1/liveness/submit` — uploads the recorded video and triggers AI processing
 class LivenessModule {
   final HttpClient _http;
   String? _sessionId;
@@ -26,85 +28,135 @@ class LivenessModule {
     return _sessionId!;
   }
 
-  /// Requests a liveness challenge from the backend.
-  /// Pass [actions] to request specific actions; omit to let the server decide.
-  Future<LivenessChallengeResponse> start({List<String>? actions}) {
-    final sessionId = _requireSession();
-    return _http.request<LivenessChallengeResponse>(
-      'POST',
-      '/v1/liveness/start',
-      body: {
-        'session_id': sessionId,
-        if (actions != null && actions.isNotEmpty) 'actions': actions,
-      },
-      fromJson: LivenessChallengeResponse.fromJson,
-    );
-  }
-
-  /// Submits the recorded [videoFile] for server-side verification.
-  Future<LivenessVerifyResponse> verify({
-    required String challengeId,
-    required File videoFile,
-  }) {
-    return _http.upload<LivenessVerifyResponse>(
-      '/v1/liveness/verify',
-      challengeId: challengeId,
-      videoFile: videoFile,
-      fromJson: LivenessVerifyResponse.fromJson,
-    );
-  }
-
-  /// **All-in-one convenience method** — equivalent to `startCheck()` in the
-  /// TypeScript SDK.
+  /// Step 1 — Create a liveness entry.
   ///
-  /// Pushes a full-screen [LivenessCheckWidget] onto the navigator, waits for
-  /// the user to complete all face actions, records video, then submits it to
-  /// the backend and returns the [LivenessVerifyResponse].
+  /// Uploads [autoshotFile] (a still frame from the camera) along with
+  /// the user's identifier and chosen [challengeActions].
+  Future<LivenessCreateResponse> create({
+    required File autoshotFile,
+    required String identifier,
+    required String identifierType, // "bvn" or "nin"
+    required String country,        // e.g. "nigeria"
+    required List<ChallengeAction> challengeActions,
+    File? idFile,
+    File? snapshotFile,
+  }) async {
+    final sessionId = _requireSession();
+
+    final files = <http.MultipartFile>[
+      await http.MultipartFile.fromPath('autoshot_file', autoshotFile.path),
+      if (idFile != null)
+        await http.MultipartFile.fromPath('id_file', idFile.path),
+      if (snapshotFile != null)
+        await http.MultipartFile.fromPath('snapshot_file', snapshotFile.path),
+    ];
+
+    return _http.uploadMultipart<LivenessCreateResponse>(
+      '/v1/liveness/create',
+      fields: {
+        'session': sessionId,
+        'identifier': identifier,
+        'identifier_type': identifierType,
+        'country': country,
+        'challenge_actions':
+            challengeActions.map((a) => a.toJson()).join(','),
+      },
+      files: files,
+      fromJson: LivenessCreateResponse.fromJson,
+    );
+  }
+
+  /// Step 2 — Submit the recorded video for AI processing.
+  ///
+  /// [entryId] comes from [LivenessCreateResponse.id].
+  Future<LivenessSubmitResponse> submit({
+    required int entryId,
+    required File videoFile,
+  }) async {
+    final sessionId = _requireSession();
+
+    return _http.uploadMultipart<LivenessSubmitResponse>(
+      '/v1/liveness/submit',
+      fields: {
+        'session': sessionId,
+        'entry': entryId.toString(),
+      },
+      files: [
+        await http.MultipartFile.fromPath('video_file', videoFile.path),
+      ],
+      fromJson: LivenessSubmitResponse.fromJson,
+    );
+  }
+
+  /// **All-in-one convenience method.**
+  ///
+  /// Opens the camera full-screen, guides the user through [challengeActions],
+  /// captures an autoshot, records video, creates the liveness entry, and
+  /// submits the video — returning [LivenessSubmitResponse].
   ///
   /// ```dart
   /// final result = await sdk.liveness.startCheck(
   ///   context,
-  ///   actions: ['smile', 'blink'],
+  ///   identifier: '22476562817',
+  ///   identifierType: 'bvn',
+  ///   country: 'nigeria',
+  ///   challengeActions: [ChallengeAction.blink, ChallengeAction.turnLeft],
   /// );
   /// ```
-  Future<LivenessVerifyResponse> startCheck(
+  Future<LivenessSubmitResponse> startCheck(
     BuildContext context, {
-    List<String>? actions,
+    required String identifier,
+    required String identifierType,
+    String country = 'nigeria',
+    List<ChallengeAction> challengeActions = const [
+      ChallengeAction.blink,
+      ChallengeAction.turnLeft,
+    ],
   }) async {
     _requireSession();
 
-    // 1. Get challenge from backend
-    final challenge = await start(actions: actions);
+    final completer = Completer<LivenessCheckResult>();
 
-    // 2. Push the camera widget and wait for completion
-    final completer = Completer<(File, String)>();
-
-    if (!context.mounted) {
-      throw StateError('BuildContext is no longer mounted.');
-    }
+    if (!context.mounted) throw StateError('BuildContext is no longer mounted.');
 
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (_) => LivenessCheckWidget(
-          challenge: challenge,
-          onComplete: (videoFile, challengeId) {
+          challengeActions: challengeActions,
+          onComplete: (autoshotFile, videoFile) {
             if (!completer.isCompleted) {
-              completer.complete((videoFile, challengeId));
+              completer.complete(
+                LivenessCheckResult(
+                    autoshotFile: autoshotFile, videoFile: videoFile),
+              );
             }
             Navigator.of(context).pop();
-          },
-          onTimeout: () {
-            // Widget will still call onComplete with whatever video was recorded
           },
         ),
       ),
     );
 
-    // 3. Get the recorded video
-    final (videoFile, challengeId) = await completer.future;
+    final result = await completer.future;
 
-    // 4. Submit to backend
-    return verify(challengeId: challengeId, videoFile: videoFile);
+    // Step 1: Create entry
+    final entry = await create(
+      autoshotFile: result.autoshotFile,
+      identifier: identifier,
+      identifierType: identifierType,
+      country: country,
+      challengeActions: challengeActions,
+    );
+
+    // Step 2: Submit video
+    return submit(entryId: entry.id, videoFile: result.videoFile);
   }
+}
+
+/// Internal data class carrying files out of [LivenessCheckWidget].
+class LivenessCheckResult {
+  final File autoshotFile;
+  final File videoFile;
+  const LivenessCheckResult(
+      {required this.autoshotFile, required this.videoFile});
 }
