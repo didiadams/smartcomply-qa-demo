@@ -15,7 +15,7 @@ import { LivenessUI } from "./LivenessUI";
  * Liveness module — 3-step flow aligned with Adhere backend.
  *
  * Flow:
- *   Step 1: liveness.create()  → POST /v1/sdk/liveness/create/  (multipart)
+ *   Step 1: liveness.create()  → POST /v1/sdk/liveness/create  (multipart)
  *   Step 2: [camera runs, user performs challenge actions]
  *   Step 3: liveness.submit()  → POST /v1/sdk/liveness/submit/  (multipart)
  *
@@ -23,12 +23,12 @@ import { LivenessUI } from "./LivenessUI";
  * Final results are delivered via webhook (liveness.completed event).
  */
 export class LivenessModule {
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient) { }
 
   /**
    * Step 1: Create a liveness challenge entry.
    *
-   * POST /v1/sdk/liveness/create/
+   * POST /v1/sdk/liveness/create
    * Auth: x-access-token: <sessionToken>
    * Content-Type: multipart/form-data
    */
@@ -51,7 +51,7 @@ export class LivenessModule {
     }
 
     return this.http.uploadWithSession<LivenessCreateResponse>(
-      "/v1/sdk/liveness/create/",
+      "/v1/sdk/liveness/create",
       formData
     );
   }
@@ -222,7 +222,7 @@ export class LivenessModule {
         // which would destroy the UI before the user sees the timeout screen.
         cleanedUp = true;
 
-        recorder.stop().catch(() => {}); // discard partial recording
+        recorder.stop().catch(() => { }); // discard partial recording
 
         return new Promise<LivenessSubmitResponse>((resolveRetry, rejectRetry) => {
           ui.showTimeout(() => {

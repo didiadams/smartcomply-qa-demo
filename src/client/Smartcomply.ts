@@ -59,7 +59,7 @@ export class SmartComply {
   /**
    * Create a new SDK session.
    *
-   * POST /v1/sdk/session/create/
+   * POST /v1/sdk/session/create
    * Auth: Authorization: Bearer <apiKey>
    * Body: { client_id: "<uuid>" }
    *
@@ -68,7 +68,7 @@ export class SmartComply {
   async createSession(): Promise<SessionResponse> {
     const response = await this.http.request<SessionResponse>(
       "POST",
-      "/v1/sdk/session/create/",
+      "/v1/sdk/session/create",
       { client_id: this.clientId }
     );
 
@@ -85,7 +85,7 @@ export class SmartComply {
    * Fetch SDK configuration from the backend.
    * Must be called after createSession().
    *
-   * GET /v1/sdk/initialize/
+   * GET /v1/sdk/initialize
    * Auth: x-access-token: <sessionToken>
    *
    * Returns: { brand_name, theme, verification_type, channels, redirect_url, ... }
@@ -93,7 +93,7 @@ export class SmartComply {
   async initializeConfig(): Promise<SDKInitConfig> {
     const config = await this.http.sessionRequest<SDKInitConfig>(
       "GET",
-      "/v1/sdk/initialize/"
+      "/v1/sdk/initialize"
     );
 
     this._sdkConfig = config;
