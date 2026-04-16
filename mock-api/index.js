@@ -5,11 +5,11 @@
  *   { status, code, message, data, request_id }
  *
  * Endpoints:
- *   POST /v1/sdk/session/create       — session creation (Bearer auth)
- *   GET  /v1/sdk/initialize       — SDK config loader (x-access-token)
- *   POST /v1/sdk/onboarding/verify    — identity verification (x-access-token)
- *   POST /v1/sdk/liveness/create      — liveness entry creation (x-access-token, multipart)
- *   POST /v1/sdk/liveness/submit      — liveness video submission (x-access-token, multipart)
+ *   POST /v1/sdk/session/create/       — session creation (Bearer auth)
+ *   GET  /v1/sdk/initialize/       — SDK config loader (x-access-token)
+ *   POST /v1/sdk/onboarding/verify/    — identity verification (x-access-token)
+ *   POST /v1/sdk/liveness/create/      — liveness entry creation (x-access-token, multipart)
+ *   POST /v1/sdk/liveness/submit/      — liveness video submission (x-access-token, multipart)
  *
  * Run: node mock-api/index.js
  */
@@ -68,7 +68,7 @@ let entryCounter = 1;
 
 // ── Session ──────────────────────────────────────────────────────────
 
-app.post("/v1/sdk/session/create", (req, res) => {
+app.post("/v1/sdk/session/create/", (req, res) => {
   // Validate Authorization header
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -164,7 +164,7 @@ function requireSession(req, res, next) {
 
 // ── SDK Initialize ───────────────────────────────────────────────────
 
-app.get("/v1/sdk/initialize", requireSession, (req, res) => {
+app.get("/v1/sdk/initialize/", requireSession, (req, res) => {
   return success(res, {
     code: "CONFIG_LOADED",
     message: "SDK configuration loaded successfully.",
@@ -254,7 +254,7 @@ app.post("/v1/sdk/onboarding/verify/", requireSession, (req, res) => {
 // ── Liveness Create ──────────────────────────────────────────────────
 
 app.post(
-  "/v1/sdk/liveness/create",
+  "/v1/sdk/liveness/create/",
   requireSession,
   upload.fields([
     { name: "autoshot_file", maxCount: 1 },

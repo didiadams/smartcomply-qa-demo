@@ -10,7 +10,7 @@ export type ChallengeAction =
 
 /**
  * Parameters for creating a liveness entry.
- * Sent as multipart to POST /v1/sdk/liveness/create
+ * Sent as multipart to POST /v1/sdk/liveness/create/
  */
 export interface LivenessCreateRequest {
   identifier: string;
@@ -23,7 +23,7 @@ export interface LivenessCreateRequest {
 }
 
 /**
- * Response from POST /v1/sdk/liveness/create (unwrapped).
+ * Response from POST /v1/sdk/liveness/create/ (unwrapped).
  */
 export interface LivenessCreateResponse {
   id: number;

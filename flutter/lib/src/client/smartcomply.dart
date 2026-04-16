@@ -51,7 +51,7 @@ class SmartComply {
     // Session creation must use the API key, not a session token
     final response = await _http.request<SessionResponse>(
       'POST',
-      '/v1/session/create',
+      '/v1/sdk/session/create/',
       body: {'client_id': _clientId},
       useApiKey: true,
       fromJson: SessionResponse.fromJson,
@@ -87,7 +87,7 @@ class SmartComply {
     }
     return _http.request<SDKInitializeResponse>(
       'GET',
-      '/v1/sdk/initialize',
+      '/v1/sdk/initialize/',
       fromJson: SDKInitializeResponse.fromJson,
     );
   }
