@@ -6,7 +6,7 @@
  *
  * Endpoints:
  *   POST /v1/sdk/session/create/       — session creation (Bearer auth)
- *   GET  /v1/sdk/sdk/initialize/       — SDK config loader (x-access-token)
+ *   GET  /v1/sdk/initialize/       — SDK config loader (x-access-token)
  *   POST /v1/sdk/onboarding/verify/    — identity verification (x-access-token)
  *   POST /v1/sdk/liveness/create/      — liveness entry creation (x-access-token, multipart)
  *   POST /v1/sdk/liveness/submit/      — liveness video submission (x-access-token, multipart)
@@ -164,7 +164,7 @@ function requireSession(req, res, next) {
 
 // ── SDK Initialize ───────────────────────────────────────────────────
 
-app.get("/v1/sdk/sdk/initialize/", requireSession, (req, res) => {
+app.get("/v1/sdk/initialize/", requireSession, (req, res) => {
   return success(res, {
     code: "CONFIG_LOADED",
     message: "SDK configuration loaded successfully.",

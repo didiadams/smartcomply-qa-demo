@@ -34,8 +34,8 @@ import SmartComply from "smartcomply-web-sdk";
 // ─────────────────────────────────────────────────────────────────────
 
 const sdk = new SmartComply({
-  apiKey: "syRJehC5K1c5PtF89Bl4w9jKOWoDJfDaGiDt5E7J2prnv10PKqrQFL61gXpD9g0M",
-  clientId: "4f02c367-e97c-4883-9598-890cf63c9590",
+  apiKey: "pk_test_smartcomply_sandbox_key",
+  clientId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   environment: "sandbox",
 });
 

@@ -85,7 +85,7 @@ export class SmartComply {
    * Fetch SDK configuration from the backend.
    * Must be called after createSession().
    *
-   * GET /v1/sdk/sdk/initialize/
+   * GET /v1/sdk/initialize/
    * Auth: x-access-token: <sessionToken>
    *
    * Returns: { brand_name, theme, verification_type, channels, redirect_url, ... }
@@ -93,7 +93,7 @@ export class SmartComply {
   async initializeConfig(): Promise<SDKInitConfig> {
     const config = await this.http.sessionRequest<SDKInitConfig>(
       "GET",
-      "/v1/sdk/sdk/initialize/"
+      "/v1/sdk/initialize/"
     );
 
     this._sdkConfig = config;

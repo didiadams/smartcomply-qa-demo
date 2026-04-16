@@ -42,7 +42,7 @@ export interface SessionResponse {
 }
 
 /**
- * SDK configuration returned by GET /v1/sdk/sdk/initialize/
+ * SDK configuration returned by GET /v1/sdk/initialize/
  */
 export interface SDKInitConfig {
   id: number;
