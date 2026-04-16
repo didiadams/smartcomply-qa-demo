@@ -1,12 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SmartComply SDK — Demo</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
     body {
       font-family: 'Inter', system-ui, -apple-system, sans-serif;
@@ -48,7 +53,11 @@
       margin-bottom: 10px;
     }
 
-    .hero p { font-size: 14px; color: #94a3b8; line-height: 1.6; }
+    .hero p {
+      font-size: 14px;
+      color: #94a3b8;
+      line-height: 1.6;
+    }
 
     /* Config panel */
     .config-panel {
@@ -90,7 +99,8 @@
       font-weight: 500;
     }
 
-    .config-field input, .config-field select {
+    .config-field input,
+    .config-field select {
       width: 100%;
       padding: 10px 12px;
       border-radius: 8px;
@@ -103,7 +113,8 @@
       transition: border-color 0.2s;
     }
 
-    .config-field input:focus, .config-field select:focus {
+    .config-field input:focus,
+    .config-field select:focus {
       border-color: #3b82f6;
     }
 
@@ -149,8 +160,18 @@
       margin-bottom: 12px;
     }
 
-    .card h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
-    .card p { font-size: 12px; color: #94a3b8; line-height: 1.5; margin-bottom: 16px; }
+    .card h3 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .card p {
+      font-size: 12px;
+      color: #94a3b8;
+      line-height: 1.5;
+      margin-bottom: 16px;
+    }
 
     .btn {
       display: inline-flex;
@@ -172,15 +193,28 @@
       color: #fff;
       box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
     }
-    .btn-primary:hover { background: #2563eb; transform: translateY(-1px); }
-    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    .btn-primary:hover {
+      background: #2563eb;
+      transform: translateY(-1px);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
 
     .btn-outline {
       background: transparent;
       color: #60a5fa;
       border: 1px solid #1e3a5f;
     }
-    .btn-outline:hover { background: rgba(96, 165, 250, 0.08); border-color: #60a5fa; }
+
+    .btn-outline:hover {
+      background: rgba(96, 165, 250, 0.08);
+      border-color: #60a5fa;
+    }
 
     /* Console */
     .console-area {
@@ -226,12 +260,24 @@
       color: #94a3b8;
     }
 
-    .log-success { color: #4ade80; }
-    .log-error { color: #f87171; }
-    .log-info { color: #60a5fa; }
-    .log-warn { color: #fbbf24; }
+    .log-success {
+      color: #4ade80;
+    }
+
+    .log-error {
+      color: #f87171;
+    }
+
+    .log-info {
+      color: #60a5fa;
+    }
+
+    .log-warn {
+      color: #fbbf24;
+    }
   </style>
 </head>
+
 <body>
 
   <div class="hero">
@@ -257,7 +303,7 @@
       <div class="config-field">
         <label>Environment</label>
         <select id="cfg-env">
-          <option value="production">Production (adhere-api.smartcomply.com)</option>
+          <option value="production">Production (adhere.com)</option>
           <option value="sandbox">Sandbox (localhost:8000)</option>
         </select>
       </div>
@@ -311,7 +357,7 @@
       consoleEl.scrollTop = consoleEl.scrollHeight;
     }
 
-    document.getElementById("btn-clear").onclick = function() {
+    document.getElementById("btn-clear").onclick = function () {
       consoleEl.innerHTML = '<div class="log-info">Console cleared.</div>';
     };
 
@@ -330,7 +376,7 @@
     }
 
     // ── Demo 1: Flow Widget ──────────────────────────────────────
-    document.getElementById("btn-flow").onclick = function() {
+    document.getElementById("btn-flow").onclick = function () {
       var cfg = getConfig();
       if (!cfg) return;
 
@@ -342,25 +388,25 @@
         clientId: cfg.clientId,
         environment: cfg.environment,
 
-        onComplete: function(result) {
+        onComplete: function (result) {
           log("✓ Flow complete! Entry ID: " + result.entryId, "success");
           log("  Status: " + result.status, "success");
           log("  Submitted: " + result.submittedAt, "success");
           log("  → Final result arrives via webhook", "info");
         },
 
-        onError: function(err) {
+        onError: function (err) {
           log("✗ Flow error: " + err.message, "error");
         },
 
-        onClose: function() {
+        onClose: function () {
           log("Flow widget closed", "warn");
         },
       });
     };
 
     // ── Demo 2: Headless API Test ────────────────────────────────
-    document.getElementById("btn-headless").onclick = function() {
+    document.getElementById("btn-headless").onclick = function () {
       var cfg = getConfig();
       if (!cfg) return;
 
@@ -372,7 +418,7 @@
         environment: cfg.environment,
       });
 
-      (async function() {
+      (async function () {
         try {
           log("Step 1: Creating session...");
           var session = await sdk.createSession();
@@ -402,4 +448,5 @@
     };
   </script>
 </body>
+
 </html>
