@@ -66,10 +66,14 @@ export class LivenessModule {
    * Note: After submission, the session is revoked (single-use).
    * The backend returns status: "processing" — results come via webhook.
    */
-  async submit(entryId: number, videoBlob: Blob): Promise<LivenessSubmitResponse> {
+  async submit(entryId: number, videoBlob: Blob, snapshotBlob?: Blob): Promise<LivenessSubmitResponse> {
     const formData = new FormData();
     formData.append("entry", String(entryId));
     formData.append("video_file", videoBlob, "liveness.webm");
+    
+    if (snapshotBlob) {
+      formData.append("snapshot_file", snapshotBlob, "snapshot.jpg");
+    }
 
     return this.http.uploadWithSession<LivenessSubmitResponse>(
       "/v1/sdk/liveness/submit/",
@@ -241,12 +245,15 @@ export class LivenessModule {
       }
 
       // ── On completion: stop recording, submit, show success ────────
+      
+      // Capture a snapshot frame while the video is still playing
+      const snapshotBlob = await this.captureFrame(videoEl);
 
       // 9. Stop recording
       const videoBlob = await recorder.stop();
 
       // 10. Submit to backend
-      const submitResult = await this.submit(entry.id, videoBlob);
+      const submitResult = await this.submit(entry.id, videoBlob, snapshotBlob);
 
       // 11. Show success overlay briefly before the flow advances
       await ui.showResult(
