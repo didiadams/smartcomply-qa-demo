@@ -9,7 +9,10 @@ export class VideoRecorder {
       ? "video/webm;codecs=vp9"
       : "video/webm";
 
-    this.recorder = new MediaRecorder(stream, { mimeType });
+    this.recorder = new MediaRecorder(stream, {
+      mimeType,
+      videoBitsPerSecond: 250_000, // ~1.4 MB for 45s — keeps file under server upload limit
+    });
 
     this.recorder.ondataavailable = (e) => {
       if (e.data.size > 0) {
