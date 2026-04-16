@@ -61,7 +61,7 @@ export class FaceDetectorEngine {
     const transformMatrix =
       result.facialTransformationMatrixes &&
       result.facialTransformationMatrixes.length > 0
-        ? Array.from(result.facialTransformationMatrixes[0].data)
+        ? Array.from(result.facialTransformationMatrixes[0].data) as number[]
         : null;
 
     return { faceDetected: true, blendshapes, transformMatrix };

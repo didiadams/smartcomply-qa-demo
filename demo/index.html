@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SmartComply SDK — Demo</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: #0b1120;
+      color: #f1f5f9;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 24px;
+    }
+
+    .hero {
+      text-align: center;
+      max-width: 520px;
+      margin-bottom: 32px;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      background: rgba(96, 165, 250, 0.1);
+      border: 1px solid rgba(96, 165, 250, 0.2);
+      font-size: 12px;
+      font-weight: 600;
+      color: #60a5fa;
+      margin-bottom: 20px;
+    }
+
+    .hero h1 {
+      font-size: 28px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #f1f5f9, #94a3b8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 10px;
+    }
+
+    .hero p { font-size: 14px; color: #94a3b8; line-height: 1.6; }
+
+    /* Config panel */
+    .config-panel {
+      width: 100%;
+      max-width: 600px;
+      background: #111d33;
+      border: 1px solid #1e3a5f;
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+
+    .config-panel h3 {
+      font-size: 13px;
+      color: #64748b;
+      font-weight: 600;
+      margin-bottom: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .config-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+
+    .config-field {
+      flex: 1;
+      min-width: 200px;
+    }
+
+    .config-field label {
+      display: block;
+      font-size: 11px;
+      color: #94a3b8;
+      margin-bottom: 4px;
+      font-weight: 500;
+    }
+
+    .config-field input, .config-field select {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: #162032;
+      color: #f1f5f9;
+      border: 1px solid #1e3a5f;
+      font-size: 13px;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .config-field input:focus, .config-field select:focus {
+      border-color: #3b82f6;
+    }
+
+    .config-field select {
+      cursor: pointer;
+    }
+
+    /* Cards */
+    .cards {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      justify-content: center;
+      max-width: 600px;
+      width: 100%;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      flex: 1;
+      min-width: 260px;
+      background: #111d33;
+      border: 1px solid #1e3a5f;
+      border-radius: 14px;
+      padding: 20px;
+      transition: all 0.3s ease;
+    }
+
+    .card:hover {
+      border-color: #3b82f6;
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(59, 130, 246, 0.15);
+    }
+
+    .card-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      margin-bottom: 12px;
+    }
+
+    .card h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+    .card p { font-size: 12px; color: #94a3b8; line-height: 1.5; margin-bottom: 16px; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 20px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      width: 100%;
+      justify-content: center;
+    }
+
+    .btn-primary {
+      background: #3b82f6;
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+    }
+    .btn-primary:hover { background: #2563eb; transform: translateY(-1px); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    .btn-outline {
+      background: transparent;
+      color: #60a5fa;
+      border: 1px solid #1e3a5f;
+    }
+    .btn-outline:hover { background: rgba(96, 165, 250, 0.08); border-color: #60a5fa; }
+
+    /* Console */
+    .console-area {
+      max-width: 600px;
+      width: 100%;
+    }
+
+    .console-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 14px;
+      background: #162032;
+      border: 1px solid #1e3a5f;
+      border-bottom: none;
+      border-radius: 10px 10px 0 0;
+      font-size: 11px;
+      font-weight: 600;
+      color: #64748b;
+    }
+
+    .console-clear {
+      background: none;
+      border: none;
+      color: #64748b;
+      cursor: pointer;
+      font-size: 11px;
+      font-family: inherit;
+    }
+
+    #console {
+      width: 100%;
+      min-height: 150px;
+      max-height: 280px;
+      overflow-y: auto;
+      background: #0d1626;
+      border: 1px solid #1e3a5f;
+      border-radius: 0 0 10px 10px;
+      padding: 10px 14px;
+      font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+      font-size: 11px;
+      line-height: 1.8;
+      color: #94a3b8;
+    }
+
+    .log-success { color: #4ade80; }
+    .log-error { color: #f87171; }
+    .log-info { color: #60a5fa; }
+    .log-warn { color: #fbbf24; }
+  </style>
+</head>
+<body>
+
+  <div class="hero">
+    <div class="hero-badge">🔒 SDK Demo</div>
+    <h1>SmartComply Web SDK</h1>
+    <p>Test the drop-in KYC verification widget against your real backend.</p>
+  </div>
+
+  <!-- Config Panel -->
+  <div class="config-panel">
+    <h3>⚙️ Configuration</h3>
+    <div class="config-row">
+      <div class="config-field">
+        <label>API Key</label>
+        <input type="text" id="cfg-apikey" placeholder="pk_live_..." />
+      </div>
+      <div class="config-field">
+        <label>Client ID (UUID)</label>
+        <input type="text" id="cfg-clientid" placeholder="a1b2c3d4-..." />
+      </div>
+    </div>
+    <div class="config-row">
+      <div class="config-field">
+        <label>Environment</label>
+        <select id="cfg-env">
+          <option value="production">Production (adhere-api.smartcomply.com)</option>
+          <option value="sandbox">Sandbox (localhost:8000)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Demo Cards -->
+  <div class="cards">
+    <div class="card">
+      <div class="card-icon" style="background:rgba(59,130,246,0.12);">🚀</div>
+      <h3>Drop-in Flow Widget</h3>
+      <p>Launches the full branded verification modal — one line of code for third-party developers.</p>
+      <button class="btn btn-primary" id="btn-flow">Launch Flow Widget</button>
+    </div>
+
+    <div class="card">
+      <div class="card-icon" style="background:rgba(16,185,129,0.12);">⚡</div>
+      <h3>Headless API Test</h3>
+      <p>Tests raw API calls: session → config → verify → liveness create (no camera).</p>
+      <button class="btn btn-outline" id="btn-headless">Run API Test</button>
+    </div>
+  </div>
+
+  <!-- Console -->
+  <div class="console-area">
+    <div class="console-header">
+      <span>Console Output</span>
+      <button class="console-clear" id="btn-clear">Clear</button>
+    </div>
+    <div id="console">
+      <div class="log-info">Enter your API key and client ID above, then click a demo button.</div>
+    </div>
+  </div>
+
+  <!-- SDK Browser Bundle -->
+  <script src="/sdk/dist/smartcomply.browser.js"></script>
+
+  <script>
+    // ── Globals from bundle ───────────────────────────────────────
+    var SmartComply = SmartComplySDK.SmartComply;
+    var SmartComplyFlow = SmartComplySDK.SmartComplyFlow;
+
+    // ── Console ───────────────────────────────────────────────────
+    var consoleEl = document.getElementById("console");
+
+    function log(msg, type) {
+      var line = document.createElement("div");
+      if (type) line.className = "log-" + type;
+      line.textContent = new Date().toLocaleTimeString() + " │ " + msg;
+      consoleEl.appendChild(line);
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+    }
+
+    document.getElementById("btn-clear").onclick = function() {
+      consoleEl.innerHTML = '<div class="log-info">Console cleared.</div>';
+    };
+
+    // ── Read config ───────────────────────────────────────────────
+    function getConfig() {
+      var apiKey = document.getElementById("cfg-apikey").value.trim();
+      var clientId = document.getElementById("cfg-clientid").value.trim();
+      var env = document.getElementById("cfg-env").value;
+
+      if (!apiKey || !clientId) {
+        log("✗ Please enter your API Key and Client ID above.", "error");
+        return null;
+      }
+
+      return { apiKey: apiKey, clientId: clientId, environment: env };
+    }
+
+    // ── Demo 1: Flow Widget ──────────────────────────────────────
+    document.getElementById("btn-flow").onclick = function() {
+      var cfg = getConfig();
+      if (!cfg) return;
+
+      log("Opening SmartComply Flow widget...", "info");
+      log("Environment: " + cfg.environment, "info");
+
+      SmartComplyFlow.open({
+        apiKey: cfg.apiKey,
+        clientId: cfg.clientId,
+        environment: cfg.environment,
+
+        onComplete: function(result) {
+          log("✓ Flow complete! Entry ID: " + result.entryId, "success");
+          log("  Status: " + result.status, "success");
+          log("  Submitted: " + result.submittedAt, "success");
+          log("  → Final result arrives via webhook", "info");
+        },
+
+        onError: function(err) {
+          log("✗ Flow error: " + err.message, "error");
+        },
+
+        onClose: function() {
+          log("Flow widget closed", "warn");
+        },
+      });
+    };
+
+    // ── Demo 2: Headless API Test ────────────────────────────────
+    document.getElementById("btn-headless").onclick = function() {
+      var cfg = getConfig();
+      if (!cfg) return;
+
+      log("── Headless API Test (" + cfg.environment + ") ──", "info");
+
+      var sdk = new SmartComply({
+        apiKey: cfg.apiKey,
+        clientId: cfg.clientId,
+        environment: cfg.environment,
+      });
+
+      (async function() {
+        try {
+          log("Step 1: Creating session...");
+          var session = await sdk.createSession();
+          log("  ✓ Token: " + session.token.slice(0, 16) + "...", "success");
+
+          log("Step 2: Loading SDK config...");
+          var config = await sdk.initializeConfig();
+          log("  ✓ Brand: " + config.brand_name, "success");
+          log("  ✓ Channels: " + JSON.stringify(config.channels), "success");
+
+          log("Step 3: Verifying identity (NIN)...");
+          var result = await sdk.onboarding.verify({
+            onboarding_type: "nin",
+            id_number: "12345678901",
+            country: "NG",
+          });
+          log("  ✓ Status: " + result.status, "success");
+
+          log("── API test complete ✓ ──", "success");
+
+        } catch (err) {
+          log("✗ Failed at: " + err.message, "error");
+          if (err.errorCode) log("  Code: " + err.errorCode, "error");
+          if (err.statusCode) log("  HTTP: " + err.statusCode, "error");
+        }
+      })();
+    };
+  </script>
+</body>
+</html>

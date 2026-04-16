@@ -1,15 +1,22 @@
 {
   "name": "smartcomply-web-sdk",
-  "version": "0.1.0",
-  "description": "SmartComply identity verification and liveness SDK",
+  "version": "1.0.0",
+  "description": "Drop-in identity verification (KYC) widget for web apps — face liveness, NIN/BVN, document verification",
   "main": "dist/index.js",
+  "module": "dist/esm/index.js",
   "types": "dist/index.d.ts",
+  "browser": "dist/smartcomply.browser.js",
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc",
-    "prepublishOnly": "npm run build",
+    "build:browser": "npx esbuild src/index.ts --bundle --format=iife --global-name=SmartComplySDK --outfile=dist/smartcomply.browser.js --target=es2020 --sourcemap",
+    "build:all": "npm run build && npm run build:browser",
+    "demo": "npm run build:all && node mock-api/index.js",
+    "prepublishOnly": "npm run build:all",
     "typecheck": "tsc --noEmit"
   },
   "repository": {
@@ -18,19 +25,24 @@
   },
   "keywords": [
     "smartcomply",
-    "identity",
-    "verification",
+    "kyc",
+    "identity-verification",
     "liveness",
+    "face-detection",
     "onboarding",
-    "sdk"
+    "sdk",
+    "adhere",
+    "nin",
+    "bvn"
   ],
-  "author": "",
+  "author": "SmartComply",
   "license": "ISC",
   "bugs": {
     "url": "https://github.com/Anitajallas/smartcomply-web-sdk/issues"
   },
   "homepage": "https://github.com/Anitajallas/smartcomply-web-sdk#readme",
   "devDependencies": {
+    "esbuild": "^0.28.0",
     "typescript": "^5.9.3"
   },
   "dependencies": {

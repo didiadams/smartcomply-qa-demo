@@ -1,20 +1,100 @@
-import { LivenessChallengeResponse } from "../../types/liveness";
 import { ActionState } from "../../camera/ActionDetector";
 
+/**
+ * Icons for the 5 backend-supported challenge actions (UPPERCASE).
+ */
 const ICONS: Record<string, string> = {
-  smile: "\uD83D\uDE04",
-  blink: "\uD83D\uDE09",
-  turn_left: "\u2B05",
-  turn_right: "\u27A1",
-  nod: "\uD83D\uDE42",
-  open_mouth: "\uD83D\uDE2E",
-  raise_eyebrows: "\uD83D\uDE32",
-  close_eyes: "\uD83D\uDE0C",
-  look_up: "\uD83D\uDC40",
-  look_down: "\uD83D\uDC47",
-  puff_cheeks: "\uD83D\uDE24",
-  pucker_lips: "\uD83D\uDE17",
+  BLINK: "\uD83D\uDE09",
+  TURN_LEFT: "\u2B05",
+  TURN_RIGHT: "\u27A1",
+  TURN_HEAD: "\uD83D\uDE42",
+  OPEN_MOUTH: "\uD83D\uDE2E",
 };
+
+/**
+ * Large animated SVG/HTML cues shown in the centre of the camera frame
+ * so the user knows exactly what to do — like a real liveness test.
+ */
+const ACTION_CUES: Record<string, string> = {
+  BLINK: `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+      <div style="font-size:64px;line-height:1;animation:sc-blink 1.2s ease-in-out infinite;">👁️</div>
+      <div style="font-size:13px;font-weight:600;color:#fff;opacity:0.9;letter-spacing:0.5px;">BLINK YOUR EYES</div>
+    </div>`,
+  TURN_LEFT: `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+      <div style="font-size:56px;line-height:1;animation:sc-slide-left 1s ease-in-out infinite;">⬅️</div>
+      <div style="font-size:13px;font-weight:600;color:#fff;opacity:0.9;letter-spacing:0.5px;">TURN HEAD LEFT</div>
+    </div>`,
+  TURN_RIGHT: `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+      <div style="font-size:56px;line-height:1;animation:sc-slide-right 1s ease-in-out infinite;">➡️</div>
+      <div style="font-size:13px;font-weight:600;color:#fff;opacity:0.9;letter-spacing:0.5px;">TURN HEAD RIGHT</div>
+    </div>`,
+  TURN_HEAD: `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+      <div style="font-size:56px;line-height:1;animation:sc-turn-head 1.4s ease-in-out infinite;">↔️</div>
+      <div style="font-size:13px;font-weight:600;color:#fff;opacity:0.9;letter-spacing:0.5px;">TURN HEAD SIDE TO SIDE</div>
+    </div>`,
+  OPEN_MOUTH: `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+      <div style="font-size:64px;line-height:1;animation:sc-mouth 1.2s ease-in-out infinite;">😮</div>
+      <div style="font-size:13px;font-weight:600;color:#fff;opacity:0.9;letter-spacing:0.5px;">OPEN YOUR MOUTH</div>
+    </div>`,
+};
+
+/** Keyframe CSS injected once */
+function injectLivenessKeyframes(): void {
+  if (document.getElementById("sc-liveness-kf")) return;
+  const s = document.createElement("style");
+  s.id = "sc-liveness-kf";
+  s.textContent = `
+    @keyframes sc-blink {
+      0%,100% { transform:scaleY(1); }
+      40%      { transform:scaleY(0.1); }
+      50%      { transform:scaleY(1); }
+    }
+    @keyframes sc-slide-left {
+      0%,100% { transform:translateX(0);   opacity:1; }
+      50%      { transform:translateX(-14px); opacity:0.6; }
+    }
+    @keyframes sc-slide-right {
+      0%,100% { transform:translateX(0);    opacity:1; }
+      50%      { transform:translateX(14px); opacity:0.6; }
+    }
+    @keyframes sc-turn-head {
+      0%,100% { transform:translateX(0);    }
+      25%      { transform:translateX(-12px); }
+      75%      { transform:translateX(12px);  }
+    }
+    @keyframes sc-mouth {
+      0%,100% { transform:scaleY(1);   }
+      40%      { transform:scaleY(1.25); }
+      60%      { transform:scaleY(1);   }
+    }
+    @keyframes sc-pop-in {
+      0%   { transform:scale(0.7); opacity:0; }
+      60%  { transform:scale(1.05); }
+      100% { transform:scale(1);   opacity:1; }
+    }
+    @keyframes sc-cue-fade {
+      0%   { opacity:0; transform:translateY(8px);  }
+      20%  { opacity:1; transform:translateY(0);    }
+      80%  { opacity:1; transform:translateY(0);    }
+      100% { opacity:0; transform:translateY(-8px); }
+    }
+  `;
+  document.head.appendChild(s);
+}
+
+/**
+ * Challenge shape used by LivenessUI.mount().
+ */
+export interface UIChallenge {
+  actions: string[];
+  time_limit_seconds: number;
+  instruction: string;
+}
 
 export class LivenessUI {
   private root: HTMLDivElement | null = null;
@@ -25,13 +105,16 @@ export class LivenessUI {
   private confidenceRingEl: SVGCircleElement | null = null;
   private timerEl: HTMLDivElement | null = null;
   private overlayEl: HTMLDivElement | null = null;
+  private actionCueEl: HTMLDivElement | null = null;
   private timerInterval: ReturnType<typeof setInterval> | null = null;
   private totalActions = 0;
+  private currentCueAction: string | null = null;
 
   mount(
     container: HTMLElement,
-    challenge: LivenessChallengeResponse
+    challenge: UIChallenge
   ): HTMLVideoElement {
+    injectLivenessKeyframes();
     this.totalActions = challenge.actions.length;
 
     this.root = document.createElement("div");
@@ -195,13 +278,29 @@ export class LivenessUI {
     `;
     bottomPanel.appendChild(this.timerEl);
 
-    // Result overlay
+    // Result overlay (used for success / failure / timeout)
     this.overlayEl = document.createElement("div");
     this.overlayEl.style.cssText = `
       position:absolute;inset:0;display:none;align-items:center;
       justify-content:center;z-index:10;
-      background:rgba(0,0,0,0.8);backdrop-filter:blur(8px);
+      background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);
       transition:opacity 0.3s ease;
+    `;
+
+    // Action cue — large centred animation shown when an action is active
+    this.actionCueEl = document.createElement("div");
+    this.actionCueEl.style.cssText = `
+      position:absolute;
+      top:50%;left:50%;transform:translate(-50%,-50%);
+      z-index:5;pointer-events:none;
+      display:none;
+      text-align:center;
+      background:rgba(0,0,0,0.55);
+      backdrop-filter:blur(4px);
+      border-radius:20px;
+      padding:18px 28px;
+      min-width:160px;
+      border:1.5px solid rgba(255,255,255,0.15);
     `;
 
     // Assemble
@@ -209,6 +308,7 @@ export class LivenessUI {
     this.root.appendChild(guideWrap);
     this.root.appendChild(topBar);
     this.root.appendChild(bottomPanel);
+    this.root.appendChild(this.actionCueEl);
     this.root.appendChild(this.overlayEl);
 
     container.appendChild(this.root);
@@ -221,6 +321,8 @@ export class LivenessUI {
     if (!this.stepsEl || !this.progressBarEl) return;
 
     let completed = 0;
+    const activeState = states.find((s) => s.active && !s.detected) ?? null;
+    const activeAction = activeState?.action ?? null;
 
     for (const state of states) {
       const step = this.stepsEl.querySelector(
@@ -254,21 +356,49 @@ export class LivenessUI {
     this.progressBarEl.style.width = `${pct}%`;
 
     // Update confidence ring for the active action
-    const active = states.find((s) => s.active && !s.detected);
     if (this.confidenceRingEl) {
       const circumference =
         2 * Math.PI * Math.sqrt((85 * 85 + 115 * 115) / 2);
-      const conf = active ? active.confidence : 0;
+      const conf = activeState ? activeState.confidence : 0;
       const offset = circumference * (1 - conf);
-      this.confidenceRingEl.setAttribute(
-        "stroke-dashoffset",
-        `${offset}`
-      );
+      this.confidenceRingEl.setAttribute("stroke-dashoffset", `${offset}`);
       this.confidenceRingEl.setAttribute(
         "stroke",
         conf > 0.6 ? "#22c55e" : "#3b82f6"
       );
     }
+
+    // Show / switch large animated action cue
+    this.updateActionCue(activeAction);
+  }
+
+  private updateActionCue(action: string | null): void {
+    if (!this.actionCueEl) return;
+
+    // No active action → hide cue
+    if (!action) {
+      this.actionCueEl.style.display = "none";
+      this.currentCueAction = null;
+      return;
+    }
+
+    // Same action already showing — no DOM thrash
+    if (action === this.currentCueAction) return;
+
+    this.currentCueAction = action;
+    const cueHtml = ACTION_CUES[action];
+    if (!cueHtml) {
+      this.actionCueEl.style.display = "none";
+      return;
+    }
+
+    // Inject content and animate in
+    this.actionCueEl.innerHTML = cueHtml;
+    this.actionCueEl.style.display = "block";
+    this.actionCueEl.style.animation = "none";
+    // Force reflow then trigger animation
+    void this.actionCueEl.offsetWidth;
+    this.actionCueEl.style.animation = "sc-pop-in 0.3s ease forwards";
   }
 
   updateInstruction(text: string): void {
@@ -277,30 +407,41 @@ export class LivenessUI {
     }
   }
 
-  showResult(status: "verified" | "failed"): Promise<void> {
-    return new Promise((resolve) => {
-      if (!this.overlayEl) {
-        resolve();
-        return;
-      }
+  stopTimer(): void {
+    if (this.timerInterval) {
+      clearInterval(this.timerInterval);
+      this.timerInterval = null;
+    }
+    if (this.timerEl) {
+      this.timerEl.textContent = "";
+    }
+  }
 
-      const isSuccess = status === "verified";
+  showResult(status: "processing" | "failed"): Promise<void> {
+    return new Promise((resolve) => {
+      if (!this.overlayEl) { resolve(); return; }
+
+      // Hide action cue before showing result
+      if (this.actionCueEl) this.actionCueEl.style.display = "none";
+      this.stopTimer();
+
+      const isProcessing = status === "processing";
       this.overlayEl.style.display = "flex";
 
       this.overlayEl.innerHTML = `
-        <div style="text-align:center;color:#fff;animation:sc-pop 0.3s ease;">
+        <div style="text-align:center;color:#fff;animation:sc-pop-in 0.35s ease;">
           <div style="
-            width:72px;height:72px;border-radius:50%;margin:0 auto 16px;
+            width:80px;height:80px;border-radius:50%;margin:0 auto 16px;
             display:flex;align-items:center;justify-content:center;
-            font-size:32px;
-            background:${isSuccess ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)"};
-            border:3px solid ${isSuccess ? "#22c55e" : "#ef4444"};
-          ">${isSuccess ? "\u2713" : "\u2717"}</div>
-          <div style="font-size:18px;font-weight:700;margin-bottom:6px;">
-            ${isSuccess ? "Verification Passed" : "Verification Failed"}
+            font-size:36px;
+            background:${isProcessing ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)"};
+            border:3px solid ${isProcessing ? "#22c55e" : "#ef4444"};
+          ">${isProcessing ? "\u2713" : "\u2717"}</div>
+          <div style="font-size:18px;font-weight:700;margin-bottom:8px;">
+            ${isProcessing ? "Submitted Successfully" : "Verification Failed"}
           </div>
-          <div style="font-size:13px;opacity:0.6;">
-            ${isSuccess ? "Liveness confirmed" : "Please try again"}
+          <div style="font-size:13px;opacity:0.65;">
+            ${isProcessing ? "Results will arrive via webhook" : "Please try again"}
           </div>
         </div>
       `;
@@ -309,11 +450,57 @@ export class LivenessUI {
     });
   }
 
+  /**
+   * Show timeout screen with an optional retry callback.
+   * Resolves immediately so the orchestrator can move to next step.
+   */
+  showTimeout(onRetry: () => void): Promise<void> {
+    return new Promise((resolve) => {
+      if (!this.overlayEl) { resolve(); return; }
+
+      if (this.actionCueEl) this.actionCueEl.style.display = "none";
+      this.stopTimer();
+
+      this.overlayEl.style.display = "flex";
+      this.overlayEl.innerHTML = `
+        <div style="text-align:center;color:#fff;animation:sc-pop-in 0.35s ease;padding:24px;">
+          <div style="
+            width:80px;height:80px;border-radius:50%;margin:0 auto 16px;
+            display:flex;align-items:center;justify-content:center;
+            font-size:36px;
+            background:rgba(251,191,36,0.15);
+            border:3px solid #fbbf24;
+          ">⏱</div>
+          <div style="font-size:18px;font-weight:700;margin-bottom:8px;">Time's Up</div>
+          <div style="font-size:13px;opacity:0.65;margin-bottom:20px;">
+            You ran out of time. Please try again.
+          </div>
+          <button id="sc-retry-btn" style="
+            padding:12px 28px;border-radius:10px;
+            background:#3b82f6;color:#fff;
+            border:none;cursor:pointer;
+            font-size:14px;font-weight:600;
+            width:100%;max-width:200px;
+          ">Try Again</button>
+        </div>
+      `;
+
+      // Wire retry button
+      const retryBtn = this.overlayEl.querySelector("#sc-retry-btn") as HTMLButtonElement | null;
+      if (retryBtn) {
+        retryBtn.addEventListener("click", () => {
+          onRetry();
+          resolve();
+        });
+      } else {
+        // fallback — auto-resolve after 5s
+        setTimeout(resolve, 5000);
+      }
+    });
+  }
+
   unmount(): void {
-    if (this.timerInterval) {
-      clearInterval(this.timerInterval);
-      this.timerInterval = null;
-    }
+    this.stopTimer();
     if (this.root && this.root.parentElement) {
       this.root.parentElement.removeChild(this.root);
     }
@@ -325,6 +512,7 @@ export class LivenessUI {
     this.confidenceRingEl = null;
     this.timerEl = null;
     this.overlayEl = null;
+    this.actionCueEl = null;
   }
 
   private startTimer(seconds: number): void {
@@ -354,19 +542,12 @@ export class LivenessUI {
 
   private describeAction(action: string): string {
     const labels: Record<string, string> = {
-      smile: "Smile naturally",
-      blink: "Blink your eyes",
-      turn_left: "Turn your head left",
-      turn_right: "Turn your head right",
-      nod: "Nod your head",
-      open_mouth: "Open your mouth wide",
-      raise_eyebrows: "Raise your eyebrows",
-      close_eyes: "Close both eyes",
-      look_up: "Look upward",
-      look_down: "Look downward",
-      puff_cheeks: "Puff your cheeks",
-      pucker_lips: "Pucker your lips",
+      BLINK: "Blink your eyes",
+      TURN_LEFT: "Turn your head left",
+      TURN_RIGHT: "Turn your head right",
+      TURN_HEAD: "Turn your head side to side",
+      OPEN_MOUTH: "Open your mouth wide",
     };
-    return labels[action] || action.replace(/_/g, " ");
+    return labels[action] || action.replace(/_/g, " ").toLowerCase();
   }
 }

@@ -1,0 +1,12 @@
+# Ignore everything
+*
+
+# Except what we want to publish
+!dist/**
+!README.md
+!LICENSE
+!package.json
+
+# Ignore sourcemaps and test files
+dist/**/*.map
+dist/**/*.test.*

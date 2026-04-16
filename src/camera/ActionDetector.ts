@@ -7,8 +7,28 @@ export interface ActionState {
   confidence: number;
 }
 
-const HOLD_FRAMES = 8;
+/**
+ * Per-action detection tuning.
+ * - threshold : minimum confidence score required to start counting.
+ * - holdFrames: consecutive frames above threshold before action is confirmed.
+ *
+ * BLINK is a fast reflex (~100-200ms) so we use a low threshold and only 2
+ * frames. Head-turn and mouth-open are sustained movements so they need a
+ * slightly longer hold to avoid false positives.
+ */
+const ACTION_CONFIGS: Record<string, { threshold: number; holdFrames: number }> = {
+  BLINK:        { threshold: 0.30, holdFrames: 2 },
+  TURN_LEFT:    { threshold: 0.45, holdFrames: 6 },
+  TURN_RIGHT:   { threshold: 0.45, holdFrames: 6 },
+  TURN_HEAD:    { threshold: 0.45, holdFrames: 6 },
+  OPEN_MOUTH:   { threshold: 0.40, holdFrames: 3 },
+};
+const DEFAULT_CONFIG = { threshold: 0.55, holdFrames: 8 };
 
+/**
+ * Sequential action detector aligned with backend's 5 UPPERCASE actions:
+ *   BLINK, TURN_LEFT, TURN_RIGHT, TURN_HEAD, OPEN_MOUTH
+ */
 export class ActionDetector {
   private completedActions = new Set<string>();
   private holdCounters = new Map<string, number>();
@@ -27,12 +47,13 @@ export class ActionDetector {
     // Only check the current active action (sequential flow)
     if (currentAction && !this.completedActions.has(currentAction)) {
       const conf = this.getConfidence(currentAction, bs, result.transformMatrix);
+      const cfg = ACTION_CONFIGS[currentAction] ?? DEFAULT_CONFIG;
 
-      if (conf > 0.6) {
+      if (conf >= cfg.threshold) {
         const count = (this.holdCounters.get(currentAction) || 0) + 1;
         this.holdCounters.set(currentAction, count);
 
-        if (count >= HOLD_FRAMES) {
+        if (count >= cfg.holdFrames) {
           this.completedActions.add(currentAction);
           this.holdCounters.delete(currentAction);
         }
@@ -71,70 +92,30 @@ export class ActionDetector {
     matrix: number[] | null
   ): number {
     switch (action) {
-      case "smile": {
-        const left = bs.get("mouthSmileLeft") || 0;
-        const right = bs.get("mouthSmileRight") || 0;
-        return (left + right) / 2;
-      }
-
-      case "blink": {
+      case "BLINK": {
         const left = bs.get("eyeBlinkLeft") || 0;
         const right = bs.get("eyeBlinkRight") || 0;
         return (left + right) / 2;
       }
 
-      case "turn_left": {
+      case "TURN_LEFT": {
         const yaw = this.getHeadYaw(matrix);
         return yaw < -12 ? Math.min(1, Math.abs(yaw) / 30) : 0;
       }
 
-      case "turn_right": {
+      case "TURN_RIGHT": {
         const yaw = this.getHeadYaw(matrix);
         return yaw > 12 ? Math.min(1, yaw / 30) : 0;
       }
 
-      case "nod": {
-        const pitch = this.getHeadPitch(matrix);
-        return pitch > 12 ? Math.min(1, pitch / 25) : 0;
+      case "TURN_HEAD": {
+        // Any significant yaw (left OR right) counts
+        const yaw = Math.abs(this.getHeadYaw(matrix));
+        return yaw > 15 ? Math.min(1, yaw / 30) : 0;
       }
 
-      case "open_mouth":
+      case "OPEN_MOUTH":
         return bs.get("jawOpen") || 0;
-
-      case "raise_eyebrows": {
-        const left = bs.get("browInnerUp") || 0;
-        const outer =
-          ((bs.get("browOuterUpLeft") || 0) +
-            (bs.get("browOuterUpRight") || 0)) /
-          2;
-        return Math.max(left, outer);
-      }
-
-      case "close_eyes": {
-        const left = bs.get("eyeBlinkLeft") || 0;
-        const right = bs.get("eyeBlinkRight") || 0;
-        return Math.min(left, right);
-      }
-
-      case "look_up": {
-        const left = bs.get("eyeLookUpLeft") || 0;
-        const right = bs.get("eyeLookUpRight") || 0;
-        return (left + right) / 2;
-      }
-
-      case "look_down": {
-        const left = bs.get("eyeLookDownLeft") || 0;
-        const right = bs.get("eyeLookDownRight") || 0;
-        return (left + right) / 2;
-      }
-
-      case "puff_cheeks": {
-        const left = bs.get("cheekPuff") || 0;
-        return left;
-      }
-
-      case "pucker_lips":
-        return bs.get("mouthPucker") || 0;
 
       default:
         return 0;
@@ -144,11 +125,6 @@ export class ActionDetector {
   private getHeadYaw(matrix: number[] | null): number {
     if (!matrix || matrix.length < 16) return 0;
     return Math.atan2(matrix[8], matrix[0]) * (180 / Math.PI);
-  }
-
-  private getHeadPitch(matrix: number[] | null): number {
-    if (!matrix || matrix.length < 16) return 0;
-    return Math.atan2(-matrix[9], matrix[5]) * (180 / Math.PI);
   }
 
   allCompleted(): boolean {
