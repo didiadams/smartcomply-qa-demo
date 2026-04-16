@@ -41,13 +41,13 @@ export class LivenessModule {
       "challenge_actions",
       JSON.stringify(params.challenge_actions)
     );
-    formData.append("autoshot_file", params.autoshot_file);
+    formData.append("autoshot_file", params.autoshot_file, "autoshot.jpg");
 
     if (params.id_file) {
-      formData.append("id_file", params.id_file);
+      formData.append("id_file", params.id_file, "id_document.jpg");
     }
     if (params.snapshot_file) {
-      formData.append("snapshot_file", params.snapshot_file);
+      formData.append("snapshot_file", params.snapshot_file, "snapshot.jpg");
     }
 
     return this.http.uploadWithSession<LivenessCreateResponse>(
