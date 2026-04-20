@@ -36,6 +36,7 @@ type StepName =
   | "country"
   | "id_type"
   | "id_input"
+  | "slip_upload"     // Nigeria only: upload physical NIN/BVN slip
   | "document_capture"
   | "liveness"
   | "result"
@@ -46,7 +47,9 @@ const STEP_ORDER: StepName[] = [
   "welcome",
   "country",
   "id_type",
-  "id_input",       // or document_capture
+  "id_input",
+  "slip_upload",
+  "document_capture",
   "liveness",
   "result",
 ];
@@ -96,6 +99,7 @@ export class SmartComplyFlow {
   private selectedIdType: string = "";
   private idNumber: string = "";
   private documentBlob: Blob | null = null;
+  private slipBlob: Blob | null = null;       // NIN/BVN physical slip upload
   private verificationResult: VerifyIdentityResponse | null = null;
   private isDestroyed = false;
 
@@ -251,7 +255,12 @@ export class SmartComplyFlow {
       this.showStep("welcome");
 
     } catch (err: any) {
-      this.showErrorStep(err.message || "Failed to initialize. Please try again.");
+      // Surface the "already used" error as a dedicated, clear screen
+      if (err?.code === "CLIENT_ID_ALREADY_USED" || (typeof err?.message === "string" && err.message.includes("already been used"))) {
+        this.showAlreadyUsedStep();
+      } else {
+        this.showErrorStep(err.message || "Failed to initialize. Please try again.");
+      }
     }
   }
 
@@ -300,6 +309,9 @@ export class SmartComplyFlow {
         break;
       case "id_input":
         this.renderIdInput(wrapper);
+        break;
+      case "slip_upload":
+        this.renderSlipUpload(wrapper);
         break;
       case "document_capture":
         this.renderDocumentCapture(wrapper);
@@ -575,7 +587,8 @@ export class SmartComplyFlow {
         });
 
         if (this.verificationResult.status === "verified") {
-          this.showStep("liveness");
+          // Nigeria flow: go to slip upload step after NIN/BVN is verified
+          this.showStep("slip_upload");
         } else {
           errorEl.textContent = this.verificationResult.message || "Verification failed. Please check your ID number.";
           errorEl.style.display = "block";
@@ -600,6 +613,148 @@ export class SmartComplyFlow {
 
     // Focus input
     setTimeout(() => input.focus(), 350);
+  }
+
+  // ── Slip Upload (Nigeria: physical NIN/BVN slip) ────────────────
+
+  private renderSlipUpload(container: HTMLElement): void {
+    container.style.cssText += "display:flex;flex-direction:column;gap:16px;";
+
+    const idLabel = this.selectedIdType === "bvn" ? "BVN" : "NIN";
+
+    const title = this.createStepTitle(`Upload ${idLabel} Slip`);
+    container.appendChild(title);
+
+    const subtitle = document.createElement("div");
+    subtitle.style.cssText = `color:${this.theme.textSecondary};font-size:13px;margin-top:-8px;line-height:1.5;`;
+    subtitle.textContent = `Please upload a clear photo of your ${idLabel} slip or card. Accepted: JPG, PNG (max 5MB).`;
+    container.appendChild(subtitle);
+
+    // Drop zone
+    const dropZone = document.createElement("div");
+    dropZone.style.cssText = `
+      border:2px dashed ${this.theme.border};border-radius:14px;
+      padding:32px 16px;text-align:center;cursor:pointer;
+      background:${this.theme.cardBg};
+      transition:all 0.2s ease;
+      display:flex;flex-direction:column;align-items:center;gap:12px;
+    `;
+
+    const dropIcon = document.createElement("div");
+    dropIcon.style.cssText = "font-size:36px;";
+    dropIcon.textContent = "📄";
+    dropZone.appendChild(dropIcon);
+
+    const dropText = document.createElement("div");
+    dropText.style.cssText = `color:${this.theme.textSecondary};font-size:13px;line-height:1.5;`;
+    dropText.innerHTML = `<strong style="color:${this.theme.primary}">Click to upload</strong> or drag and drop<br>your ${idLabel} slip / card image`;
+    dropZone.appendChild(dropText);
+
+    // Hidden file input
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = "image/jpeg,image/jpg,image/png";
+    fileInput.style.display = "none";
+    container.appendChild(fileInput);
+
+    // Preview element
+    const preview = document.createElement("div");
+    preview.style.cssText = "display:none;";
+    const previewImg = document.createElement("img");
+    previewImg.style.cssText = `
+      width:100%;max-height:180px;object-fit:cover;
+      border-radius:10px;border:2px solid ${this.theme.border};
+    `;
+    const previewName = document.createElement("div");
+    previewName.style.cssText = `color:${this.theme.textSecondary};font-size:12px;margin-top:6px;text-align:center;`;
+    preview.appendChild(previewImg);
+    preview.appendChild(previewName);
+
+    // Error area
+    const errorEl = document.createElement("div");
+    errorEl.style.cssText = `
+      color:${this.theme.error};font-size:13px;display:none;
+      padding:8px 12px;border-radius:8px;background:${this.theme.errorBg};
+    `;
+
+    // Continue button (disabled until file chosen)
+    const continueBtn = this.createPrimaryButton(`Continue to Face Verification`);
+    continueBtn.id = "sc-slip-continue";
+    continueBtn.disabled = true;
+    continueBtn.style.opacity = "0.5";
+
+    const processFile = (file: File) => {
+      errorEl.style.display = "none";
+
+      // Validate type
+      if (!['image/jpeg','image/jpg','image/png'].includes(file.type)) {
+        errorEl.textContent = "Only JPG and PNG images are accepted.";
+        errorEl.style.display = "block";
+        return;
+      }
+      // Validate size (5 MB)
+      if (file.size > 5 * 1024 * 1024) {
+        errorEl.textContent = "File too large. Maximum size is 5 MB.";
+        errorEl.style.display = "block";
+        return;
+      }
+
+      this.slipBlob = file;
+
+      // Show preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        previewImg.src = e.target?.result as string;
+        previewName.textContent = file.name;
+        preview.style.display = "block";
+        dropZone.style.borderStyle = "solid";
+        dropZone.style.borderColor = this.theme.primary;
+        dropIcon.textContent = "✅";
+        dropText.innerHTML = `<strong style="color:${this.theme.success || '#22c55e'}">File selected</strong> — click to change`;
+      };
+      reader.readAsDataURL(file);
+
+      continueBtn.disabled = false;
+      continueBtn.style.opacity = "1";
+    };
+
+    // Click to open file dialog
+    dropZone.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", () => {
+      if (fileInput.files?.[0]) processFile(fileInput.files[0]);
+    });
+
+    // Drag-and-drop support
+    dropZone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropZone.style.borderColor = this.theme.primary;
+      dropZone.style.background = this.theme.shimmer;
+    });
+    dropZone.addEventListener("dragleave", () => {
+      dropZone.style.borderColor = this.theme.border;
+      dropZone.style.background = this.theme.cardBg;
+    });
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropZone.style.borderColor = this.theme.border;
+      dropZone.style.background = this.theme.cardBg;
+      const file = e.dataTransfer?.files[0];
+      if (file) processFile(file);
+    });
+
+    continueBtn.addEventListener("click", () => {
+      if (this.slipBlob) this.showStep("liveness");
+    });
+
+    container.appendChild(dropZone);
+    container.appendChild(preview);
+    container.appendChild(errorEl);
+    container.appendChild(continueBtn);
+
+    // Back
+    const backBtn = this.createSecondaryButton("← Back");
+    backBtn.addEventListener("click", () => this.showStep("id_input"));
+    container.appendChild(backBtn);
   }
 
   // ── Document Capture ────────────────────────────────────────────
@@ -679,6 +834,9 @@ export class SmartComplyFlow {
       ? "US"
       : this.selectedCountry.toUpperCase().slice(0, 2);
 
+    // id_file: use the NIN/BVN slip blob (Nigeria) or document blob (international)
+    const idFile = this.slipBlob ?? this.documentBlob ?? undefined;
+
     // Start liveness check (this handles camera, detection, recording, submission)
     this.sdk.liveness
       .startCheck(
@@ -687,7 +845,7 @@ export class SmartComplyFlow {
           identifier,
           identifier_type: this.selectedIdType,
           country,
-          id_file: this.documentBlob || undefined,
+          id_file: idFile,
         },
         ["BLINK", "TURN_LEFT", "OPEN_MOUTH"] as ChallengeAction[]
       )
@@ -695,7 +853,11 @@ export class SmartComplyFlow {
         this.showResult(result);
       })
       .catch((err) => {
-        this.showErrorStep(err.message || "Liveness verification failed. Please try again.");
+        if (err?.code === "CLIENT_ID_ALREADY_USED" || (typeof err?.message === "string" && err.message.includes("already been used"))) {
+          this.showAlreadyUsedStep();
+        } else {
+          this.showErrorStep(err.message || "Liveness verification failed. Please try again.");
+        }
       });
   }
 
@@ -787,6 +949,63 @@ export class SmartComplyFlow {
   }
 
   // ── Error ───────────────────────────────────────────────────────
+
+  /** Shown when the client_id has already been used for a verified submission. */
+  private showAlreadyUsedStep(): void {
+    this.currentStep = "error";
+    if (!this.contentArea) return;
+    this.contentArea.innerHTML = "";
+
+    const wrapper = document.createElement("div");
+    wrapper.style.cssText = `
+      display:flex;flex-direction:column;align-items:center;
+      text-align:center;gap:16px;padding:20px 0;
+    `;
+
+    const iconWrap = document.createElement("div");
+    iconWrap.style.cssText = `
+      width:72px;height:72px;border-radius:50%;
+      display:flex;align-items:center;justify-content:center;
+      font-size:32px;
+      background:${this.theme.shimmer};
+      border:3px solid ${this.theme.border};
+    `;
+    iconWrap.textContent = "🔒";
+    wrapper.appendChild(iconWrap);
+
+    const title = document.createElement("h2");
+    title.style.cssText = `color:${this.theme.text};font-size:18px;font-weight:700;margin:0;`;
+    title.textContent = "Already Verified";
+    wrapper.appendChild(title);
+
+    const desc = document.createElement("p");
+    desc.style.cssText = `color:${this.theme.textSecondary};font-size:14px;line-height:1.6;margin:0;max-width:300px;`;
+    desc.textContent = "This verification link has already been used. Each link can only be used once. Please contact support if you believe this is an error.";
+    wrapper.appendChild(desc);
+
+    const infoCard = document.createElement("div");
+    infoCard.style.cssText = `
+      width:100%;padding:14px 16px;border-radius:12px;
+      background:${this.theme.cardBg};border:1px solid ${this.theme.border};
+      display:flex;align-items:center;gap:12px;text-align:left;
+    `;
+    infoCard.innerHTML = `
+      <span style="font-size:20px;">ℹ️</span>
+      <span style="color:${this.theme.textSecondary};font-size:13px;line-height:1.5;">
+        If you need to re-verify, ask the issuing organisation to generate a new link for you.
+      </span>
+    `;
+    wrapper.appendChild(infoCard);
+
+    const closeBtn = this.createPrimaryButton("Close");
+    closeBtn.addEventListener("click", () => {
+      this.options.onError?.(new Error("CLIENT_ID_ALREADY_USED"));
+      this.close();
+    });
+    wrapper.appendChild(closeBtn);
+
+    this.contentArea.appendChild(wrapper);
+  }
 
   private showErrorStep(message: string): void {
     this.currentStep = "error";
